@@ -20,6 +20,9 @@
 .DS_Store
 *.pem
 
+# reference/source assets (personal workspace images)
+_reference/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
