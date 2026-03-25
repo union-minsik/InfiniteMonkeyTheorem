@@ -23,6 +23,9 @@ const shapeColorMap: Record<TypedShapeKey, string> = {
 
 export interface PixelMonkeyProps {
   typing?: boolean;
+  isResting?: boolean;
+  isWaiting?: boolean;
+  spriteType?: number;
   typedShapes?: TypedShape[];
   earnedGold?: number | null;
   /** 버튼 등에서 원숭이만 표시할 때 true */
@@ -31,17 +34,31 @@ export interface PixelMonkeyProps {
 
 export function PixelMonkey({
   typing,
+  isResting,
+  isWaiting,
+  spriteType = 0,
   typedShapes = [],
   earnedGold,
   iconOnly = false,
 }: PixelMonkeyProps) {
+  // Determine which sprite animation class to use
+  let animationClass = 'animate-monkey-idle';
+
+  if (typing) {
+    animationClass = `animate-monkey-typing-${spriteType}`;
+  } else if (isResting && !isWaiting) {
+    animationClass = 'animate-monkey-resting';
+  }
+
   return (
-    <div className="flex flex-col items-center gap-1 relative pt-8">
+    <div className="flex flex-col items-center gap-1 relative w-full pt-6">
       {/* Gold earned floating text (iconOnly일 때 숨김, 상단 여유로 잘림 방지) */}
       {!iconOnly && earnedGold !== null && earnedGold !== undefined && (
         <div
-          className="absolute top-0 left-1/2 -translate-x-1/2 font-mono text-[10px] whitespace-nowrap pointer-events-none z-10 text-amber-400"
-          style={{ animation: 'floatUp 1.2s ease-out forwards' }}
+          className="absolute top-4 w-full font-mono text-[10px] pointer-events-none z-10 text-amber-400 flex justify-center"
+          style={{
+            animation: 'floatUp 1.2s ease-out forwards',
+          }}
         >
           {earnedGold > 0 ? `+${earnedGold}G` : '0'}
         </div>
@@ -49,7 +66,7 @@ export function PixelMonkey({
 
       {/* Typed shapes above head — 실제 친 문자(○△□→●▲■) 표시, 일치/불일치만 색으로 구분 (2/3 크기) */}
       {!iconOnly && (
-        <div className="symbol-row-sm">
+        <div className="symbol-row-sm h-6 mt-4">
           {typedShapes.map((item, i) => {
             const displayChar = toFilledSymbol(item.symbol);
             const colorClass = shapeColorMap[item.shape];
@@ -69,119 +86,12 @@ export function PixelMonkey({
 
       {/* Monkey body */}
       <div
-        className={`flex flex-col items-center ${typing ? 'animate-typing' : 'animate-monkey-idle'}`}
-      >
-        <div
-          className="relative"
-          style={{ width: 32, height: 40, imageRendering: 'pixelated' }}
-        >
-          <div
-            className="absolute"
-            style={{
-              top: 0,
-              left: 4,
-              width: 24,
-              height: 20,
-              background: 'hsl(30, 60%, 40%)',
-              borderRadius: 2,
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 4,
-              left: 8,
-              width: 16,
-              height: 12,
-              background: 'hsl(30, 50%, 55%)',
-              borderRadius: 1,
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 6,
-              left: 10,
-              width: 4,
-              height: 4,
-              background: 'hsl(0, 0%, 10%)',
-              borderRadius: 1,
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 6,
-              left: 18,
-              width: 4,
-              height: 4,
-              background: 'hsl(0, 0%, 10%)',
-              borderRadius: 1,
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 12,
-              left: 12,
-              width: 8,
-              height: 2,
-              background: 'hsl(0, 40%, 35%)',
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 20,
-              left: 6,
-              width: 20,
-              height: 16,
-              background: 'hsl(30, 60%, 40%)',
-              borderRadius: 1,
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 22,
-              left: 0,
-              width: 6,
-              height: 4,
-              background: 'hsl(30, 60%, 40%)',
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 22,
-              left: 26,
-              width: 6,
-              height: 4,
-              background: 'hsl(30, 60%, 40%)',
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 36,
-              left: 8,
-              width: 6,
-              height: 4,
-              background: 'hsl(30, 60%, 35%)',
-            }}
-          />
-          <div
-            className="absolute"
-            style={{
-              top: 36,
-              left: 18,
-              width: 6,
-              height: 4,
-              background: 'hsl(30, 60%, 35%)',
-            }}
-          />
-        </div>
-      </div>
+        className={`monkey-sprite ${animationClass}`}
+        style={{
+          filter: isWaiting ? 'grayscale(100%) opacity(0.7)' : 'none',
+          marginTop: '-8px',
+        }}
+      />
     </div>
   );
 }

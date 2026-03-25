@@ -8,7 +8,22 @@ export function useGameLoop() {
   tickRef.current = tick;
 
   useEffect(() => {
-    const interval = setInterval(() => tickRef.current(), 1000);
-    return () => clearInterval(interval);
+    let lastTime = performance.now();
+    let animationFrameId: number;
+
+    const loop = (time: number) => {
+      const delta = (time - lastTime) / 1000; // in seconds
+      lastTime = time;
+
+      // cap delta to prevent huge jumps if tab was inactive
+      if (delta < 1) {
+        tickRef.current(delta);
+      }
+
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
+    animationFrameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animationFrameId);
   }, []);
 }

@@ -305,15 +305,15 @@
 
 /* 대형 캔버스 너비 고정, 15열, 행은 원숭이 수만큼 */
 .monkey-grid-background {
-  width: 1600px;
+  width: 1800px;
   height: max-content;
   min-height: 100%;
   padding: 100px 12px 100px;
   box-sizing: border-box;
   display: grid;
   grid-template-columns: repeat(15, 1fr);
-  grid-auto-rows: 120px;
-  gap: 32px 8px;
+  grid-auto-rows: 180px;
+  gap: 32px 16px;
   align-content: start;
   align-items: center;
   justify-items: center;
@@ -437,14 +437,14 @@
 }
 
 .symbol-cell-sm {
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
-  min-height: 20px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 16.8px; /* 14px * 1.2 */
   line-height: 1;
   font-weight: 700;
   flex-shrink: 0;
@@ -538,7 +538,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   overflow: visible;
 }
 
@@ -576,8 +576,9 @@
 .floating-reward {
   position: absolute;
   top: -24px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  text-align: center;
   color: var(--primary);
   font-weight: 900;
   font-size: 0.7rem;
@@ -722,6 +723,12 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background-image: url('/assets/monkeys/idle.png');
+  background-size: 64px 64px;
+  background-position: 0 0;
+  image-rendering: pixelated;
 }
 
 .buy-text {
@@ -816,19 +823,19 @@
 @keyframes floatUp {
   0% {
     opacity: 0;
-    transform: translate(-50%, 0);
+    transform: translateY(0);
   }
   20% {
     opacity: 1;
-    transform: translate(-50%, -10px);
+    transform: translateY(-5px);
   }
   80% {
     opacity: 1;
-    transform: translate(-50%, -20px);
+    transform: translateY(-15px);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -25px);
+    transform: translateY(-20px);
   }
 }
 
@@ -861,36 +868,98 @@
   }
 }
 
-@keyframes monkeyBounce {
-  0%,
-  100% {
-    transform: scaleY(1);
-  }
-  50% {
-    transform: scaleY(0.9) translateY(4px);
-  }
+/* Sprite Animations */
+.monkey-sprite {
+  background-repeat: no-repeat;
+  background-size: cover;
+  image-rendering: pixelated;
+  width: 128px;
+  height: 128px;
 }
 
-/* 타자 한 번 칠 때마다 덜컥 한 번 움직이는 느낌 */
-@keyframes typing {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  35% {
-    transform: translateY(4px);
-  }
-  70% {
-    transform: translateY(0);
-  }
-}
-
-.animate-typing {
-  animation: typing 0.4s ease-out infinite;
+@keyframes playIdle {
+  0% { background-position: 0 0; }
+  25% { background-position: -128px 0; }
+  50% { background-position: 0 -128px; }
+  75% { background-position: -128px -128px; }
+  100% { background-position: 0 0; }
 }
 
 .animate-monkey-idle {
-  animation: monkeyBounce 1.5s ease-in-out infinite;
+  background-image: url('/assets/monkeys/idle.png');
+  background-size: 256px 256px; /* 2x2 grid, each frame 128x128 */
+  animation: playIdle 0.7s steps(1) infinite;
+}
+
+@keyframes playResting {
+  0% { background-position: 0 0; }
+  12.5% { background-position: -128px 0; }
+  25% { background-position: -256px 0; }
+  37.5% { background-position: -384px 0; }
+  50% { background-position: 0 -128px; }
+  62.5% { background-position: -128px -128px; }
+  75% { background-position: -256px -128px; }
+  87.5% { background-position: -384px -128px; }
+  100% { background-position: 0 0; }
+}
+
+.animate-monkey-resting {
+  background-image: url('/assets/monkeys/resting.png');
+  background-size: 512px 256px; /* 4x2 grid */
+  animation: playResting 1.05s steps(1) infinite;
+}
+
+@keyframes playTyping0 {
+  0% { background-position: 0 0; }
+  14.28% { background-position: -128px 0; }
+  28.57% { background-position: -256px 0; }
+  42.85% { background-position: -384px 0; }
+  57.14% { background-position: 0 -128px; }
+  71.42% { background-position: -128px -128px; }
+  85.71% { background-position: -256px -128px; }
+  100% { background-position: 0 0; }
+}
+
+.animate-monkey-typing-0 {
+  background-image: url('/assets/monkeys/typing_0.png');
+  background-size: 512px 256px; /* 4x2 grid, 7 frames */
+  animation: playTyping0 0.5s steps(1) forwards;
+}
+
+@keyframes playTyping1 {
+  0% { background-position: 0 0; }
+  12.5% { background-position: -128px 0; }
+  25% { background-position: -256px 0; }
+  37.5% { background-position: -384px 0; }
+  50% { background-position: 0 -128px; }
+  62.5% { background-position: -128px -128px; }
+  75% { background-position: -256px -128px; }
+  87.5% { background-position: -384px -128px; }
+  100% { background-position: 0 0; }
+}
+
+.animate-monkey-typing-1 {
+  background-image: url('/assets/monkeys/typing_1.png');
+  background-size: 512px 256px; /* 4x2 grid, 8 frames */
+  animation: playTyping1 0.5s steps(1) forwards;
+}
+
+@keyframes playTyping2 {
+  0% { background-position: 0 0; }
+  12.5% { background-position: -128px 0; }
+  25% { background-position: -256px 0; }
+  37.5% { background-position: -384px 0; }
+  50% { background-position: 0 -128px; }
+  62.5% { background-position: -128px -128px; }
+  75% { background-position: -256px -128px; }
+  87.5% { background-position: -384px -128px; }
+  100% { background-position: 0 0; }
+}
+
+.animate-monkey-typing-2 {
+  background-image: url('/assets/monkeys/typing_2.png');
+  background-size: 512px 256px; /* 4x2 grid, 8 frames */
+  animation: playTyping2 0.5s steps(1) forwards;
 }
 
 @keyframes confettiFall {
@@ -903,6 +972,25 @@
     opacity: 0;
   }
 }
+
+@keyframes zzz1 {
+  0%, 80% { opacity: 1; }
+  85%, 100% { opacity: 0; }
+}
+@keyframes zzz2 {
+  0%, 25% { opacity: 0; }
+  25.1%, 80% { opacity: 1; }
+  85%, 100% { opacity: 0; }
+}
+@keyframes zzz3 {
+  0%, 50% { opacity: 0; }
+  50.1%, 80% { opacity: 1; }
+  85%, 100% { opacity: 0; }
+}
+
+.zzz-1 { animation: zzz1 2.5s infinite; }
+.zzz-2 { animation: zzz2 2.5s infinite; }
+.zzz-3 { animation: zzz3 2.5s infinite; }
 
 /* ===== Scrollbar ===== */
 

@@ -3,17 +3,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 
 import { PixelMonkey, type TypedShape } from '@/components/game/PixelMonkey';
-import { PixelTypewriter } from '@/components/game/PixelTypewriter';
 import { MISSIONS } from '@/config/missions';
 import { useGameLoop } from '@/hooks/useGameLoop';
 import { formatNumber } from '@/lib/format';
 import { playMonkeySuccessSound } from '@/lib/sounds';
-import {
-  useGameStore,
-  getPurchaseUnit,
-  getBulkCost,
-  type VisualMonkey,
-} from '@/stores/gameStore';
+import { useGameStore, type Monkey } from '@/stores/gameStore';
 
 function CelebrationOverlay({
   missionName,
@@ -59,15 +53,16 @@ function CelebrationOverlay({
 function MonkeyCard({
   monkey,
   target,
-  typingProgress,
+  isResting,
 }: {
-  monkey: VisualMonkey;
+  monkey: Monkey;
   target: string;
-  typingProgress: number;
+  isResting: boolean;
 }) {
-  const currentChars = monkey.showReward
-    ? monkey.targetString
-    : monkey.targetString.slice(0, typingProgress);
+  const isShowingLast = monkey.currentString.length === 0 && monkey.lastString;
+  const currentChars = isShowingLast
+    ? monkey.lastString!
+    : monkey.currentString;
 
   const typedShapes: TypedShape[] = Array.from({
     length: currentChars.length,
@@ -79,47 +74,109 @@ function MonkeyCard({
     };
   });
 
-  const typing = !monkey.showReward && typingProgress < target.length;
+  const typingSpeed = useGameStore((s) => s.typingSpeed);
+  const globalTypingProgress = useGameStore((s) => s.globalTypingProgress);
+
+  const timeUntilNextChar = typingSpeed * (1 - globalTypingProgress);
+  const shouldBeTyping =
+    !monkey.isWaiting &&
+    monkey.currentString.length < target.length &&
+    timeUntilNextChar <= 0.3;
+
+  const [isTypingAnim, setIsTypingAnim] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (shouldBeTyping && !isTypingAnim) {
+      setIsTypingAnim(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsTypingAnim(false);
+      }, 500);
+    }
+  }, [shouldBeTyping, isTypingAnim]);
 
   return (
-    <div className="monkey-card relative">
-      {/* 원숭이 (위) + 타이핑 표시 */}
+    <div className="monkey-card relative pt-6">
       <div className="monkey-icon-wrapper">
-        <PixelMonkey
-          typing={typing}
-          typedShapes={typedShapes}
-          earnedGold={monkey.showReward ? monkey.earnedGold : undefined}
-        />
-        {monkey.batchSize > 1 && (
-          <div className="monkey-batch-badge font-mono">
-            x{formatNumber(monkey.batchSize)}
+        {/* Status texts positioned absolutely at the top of monkey-card */}
+        {isResting && !monkey.isWaiting && (
+          <div
+            className="absolute top-20 right-6 font-mono text-[16px] text-blue-300 z-10 font-bold tracking-tighter drop-shadow-md"
+            style={{ textShadow: '2px 2px 0 #0d1117' }}
+          >
+            <span className="zzz-1">z</span>
+            <span className="zzz-2">z</span>
+            <span className="zzz-3">Z</span>
           </div>
         )}
-      </div>
-      {/* 타자기 (아래, 원숭이 바로 앞) */}
-      <div className="flex justify-center">
-        <PixelTypewriter />
+        {monkey.isWaiting && (
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 font-mono text-[12px] text-gray-400 animate-pulse whitespace-nowrap z-10">
+            대기중
+          </div>
+        )}
+        {monkey.isInspired && !monkey.isWaiting && (
+          <div className="absolute top-10 left-1/4 font-mono text-[12px] text-yellow-300 animate-bounce whitespace-nowrap z-10">
+            💡
+          </div>
+        )}
+
+        <PixelMonkey
+          typing={isTypingAnim}
+          isResting={isResting}
+          isWaiting={monkey.isWaiting}
+          spriteType={monkey.spriteType}
+          typedShapes={typedShapes}
+          earnedGold={isShowingLast ? monkey.lastEarnedGold : undefined}
+        />
       </div>
     </div>
   );
 }
 
-function MissionProgressBar({
-  bestMatch,
-  targetLength,
-}: {
-  bestMatch: number;
-  targetLength: number;
-}) {
-  const pct = targetLength > 0 ? (bestMatch / targetLength) * 100 : 0;
+function StatsPopup({ onClose }: { onClose: () => void }) {
+  const typingSpeed = useGameStore((s) => s.typingSpeed);
+  const maxStamina = useGameStore((s) => s.maxStamina);
+  const restTime = useGameStore((s) => s.restTime);
+  const inspirationChance = useGameStore((s) => s.inspirationChance);
+
   return (
-    <div className="progress-container">
-      <div className="progress-bar">
-        <div className="progress-fill" style={{ width: `${pct}%` }} />
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-zinc-900 border-2 border-zinc-700 p-6 rounded-lg max-w-sm w-full font-mono text-sm text-zinc-300"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-xl text-white mb-4 text-center">능력치 정보</h2>
+        <div className="space-y-3">
+          <div className="flex justify-between">
+            <span>타자 속도:</span>
+            <span className="text-white">{typingSpeed}초/글자</span>
+          </div>
+          <div className="flex justify-between">
+            <span>집중력 (스태미나):</span>
+            <span className="text-white">{maxStamina}자</span>
+          </div>
+          <div className="flex justify-between">
+            <span>휴식 시간:</span>
+            <span className="text-white">{restTime}초</span>
+          </div>
+          <div className="flex justify-between">
+            <span>영감 확률:</span>
+            <span className="text-white">
+              {(inspirationChance * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
+        <button
+          className="mt-6 w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded border border-zinc-600 transition-colors"
+          onClick={onClose}
+        >
+          닫기
+        </button>
       </div>
-      <span className="progress-text">
-        최고 {bestMatch}/{targetLength} ({Math.floor(pct)}%)
-      </span>
     </div>
   );
 }
@@ -140,21 +197,23 @@ export default function Home() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [scale, setScale] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const pinchStart = useRef({ distance: 0, scale: 1 });
 
   const gold = useGameStore((s) => s.gold);
-  const monkeyCount = useGameStore((s) => s.monkeyCount);
+  const monkeys = useGameStore((s) => s.monkeys);
+  const monkeyCap = useGameStore((s) => s.monkeyCap);
+  const purchaseCount = useGameStore((s) => s.purchaseCount);
   const currentMissionIndex = useGameStore((s) => s.currentMissionIndex);
-  const bestMatchCount = useGameStore((s) => s.bestMatchCount);
-  const visualMonkeys = useGameStore((s) => s.visualMonkeys);
-  const typingProgress = useGameStore((s) => s.typingProgress);
   const showCelebration = useGameStore((s) => s.showCelebration);
-  const lastGoldPerSecond = useGameStore((s) => s.lastGoldPerSecond);
   const completedMissionName = useGameStore((s) => s.completedMissionName);
-  const buyMonkeys = useGameStore((s) => s.buyMonkeys);
+  const buyMonkey = useGameStore((s) => s.buyMonkey);
   const dismissCelebration = useGameStore((s) => s.dismissCelebration);
   const resetGame = useGameStore((s) => s.resetGame);
+  const typingSpeed = useGameStore((s) => s.typingSpeed);
+  const globalIsResting = useGameStore((s) => s.globalIsResting);
 
   useGameLoop();
 
@@ -188,6 +247,7 @@ export default function Home() {
     },
     [pan.x, pan.y, scale]
   );
+
   const onPanMove = useCallback(
     (e: MouseEvent | TouchEvent) => {
       if ('touches' in e && e.touches.length === 2) {
@@ -212,9 +272,11 @@ export default function Home() {
     },
     [isDragging]
   );
+
   const onPanEnd = useCallback(() => {
     setIsDragging(false);
   }, []);
+
   useEffect(() => {
     if (!isDragging) return;
     window.addEventListener('mousemove', onPanMove);
@@ -270,9 +332,15 @@ export default function Home() {
 
   const mission = MISSIONS[currentMissionIndex];
   const isLastMission = currentMissionIndex >= MISSIONS.length - 1;
-  const unit = getPurchaseUnit(monkeyCount);
-  const cost = getBulkCost(monkeyCount, unit);
-  const canBuy = gold >= cost;
+  const cost = Math.floor(100 * Math.pow(1.07, purchaseCount));
+  const canBuy = gold >= cost && monkeys.length < monkeyCap;
+
+  // 초당 타자 사이클 수: (원숭이 수) / (목표 길이 * 타자속도)
+  // 대략적인 추정치 (휴식 시간 제외)
+  const cyclesPerSec =
+    monkeys.length > 0 && mission.target.length > 0
+      ? monkeys.length / (mission.target.length * typingSpeed)
+      : 0;
 
   return (
     <div
@@ -291,19 +359,13 @@ export default function Home() {
         <div className="info-item">
           <span className="info-label">MONKEYS</span>
           <span className="info-value font-mono">
-            {formatNumber(monkeyCount)}
+            {monkeys.length}/{monkeyCap}
           </span>
         </div>
         <div className="info-item">
           <span className="info-label">CYCLES/s</span>
           <span className="info-value font-mono">
-            {formatNumber(monkeyCount)}
-          </span>
-        </div>
-        <div className="info-item">
-          <span className="info-label">GOLD/s</span>
-          <span className="info-value gps-value font-mono">
-            {formatNumber(lastGoldPerSecond)}
+            {cyclesPerSec.toFixed(2)}
           </span>
         </div>
         <button
@@ -326,21 +388,22 @@ export default function Home() {
           className="world-layer"
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            width: '1800px',
           }}
           role="presentation"
         >
           <div className="monkey-grid monkey-grid-background">
-            {visualMonkeys.length === 0 ? (
+            {monkeys.length === 0 ? (
               <div className="results-empty font-mono">
-                Waiting for typing...
+                원숭이를 구매해주세요!
               </div>
             ) : (
-              visualMonkeys.map((vm) => (
+              monkeys.map((monkey) => (
                 <MonkeyCard
-                  key={vm.id}
-                  monkey={vm}
+                  key={monkey.id}
+                  monkey={monkey}
                   target={mission.target}
-                  typingProgress={typingProgress}
+                  isResting={globalIsResting}
                 />
               ))
             )}
@@ -383,23 +446,34 @@ export default function Home() {
       </main>
 
       {/* Bottom Control Area */}
-      <footer className="control-area">
-        <MissionProgressBar
-          bestMatch={bestMatchCount}
-          targetLength={mission.target.length}
-        />
+      <footer className="control-area relative">
         <button
-          className={`buy-button font-mono ${canBuy ? 'buy-active' : 'buy-disabled'}`}
-          onClick={buyMonkeys}
-          disabled={!canBuy}
+          className="absolute left-4 bottom-4 w-10 h-10 bg-zinc-800 border-2 border-zinc-600 rounded-full flex items-center justify-center text-xl hover:bg-zinc-700 transition-colors z-10"
+          onClick={() => setShowStats(true)}
+          title="능력치 정보"
         >
-          <span className="buy-icon" style={{ transform: 'scale(0.6)' }}>
-            <PixelMonkey iconOnly />
-          </span>
-          <span className="buy-text">원숭이 +{formatNumber(unit)}</span>
-          <span className="buy-cost">{formatNumber(cost)} G</span>
+          📊
         </button>
+
+        <div className="flex-1 flex justify-center">
+          <button
+            className={`buy-button font-mono ${canBuy ? 'buy-active' : 'buy-disabled'}`}
+            onClick={buyMonkey}
+            disabled={!canBuy}
+          >
+            <span className="buy-icon" />
+            <span className="buy-text">
+              {monkeys.length >= monkeyCap ? '최대치 도달' : '원숭이 고용'}
+            </span>
+            {monkeys.length < monkeyCap && (
+              <span className="buy-cost">{formatNumber(cost)} G</span>
+            )}
+          </button>
+        </div>
       </footer>
+
+      {/* Stats Popup */}
+      {showStats && <StatsPopup onClose={() => setShowStats(false)} />}
 
       {/* Celebration Overlay */}
       {showCelebration && (

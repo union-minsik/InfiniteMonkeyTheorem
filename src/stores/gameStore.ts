@@ -3,310 +3,264 @@ import { persist } from 'zustand/middleware';
 
 import { MISSIONS } from '@/config/missions';
 
-export interface VisualMonkey {
+export interface Monkey {
   id: string;
-  batchSize: number;
-  targetString: string;
-  earnedGold: number;
-  showReward: boolean;
+  currentString: string;
+  isInspired: boolean;
+  lastString?: string;
+  lastEarnedGold?: number;
+  isWaiting?: boolean;
+  spriteType: number; // 0, 1, or 2 for typing_0, typing_1, typing_2
 }
 
 interface PersistedState {
   gold: number;
-  monkeyCount: number;
+  monkeys: Monkey[];
+  purchaseCount: number;
   currentMissionIndex: number;
-  bestMatchCount: number;
+  globalStamina: number;
+  globalIsResting: boolean;
+  globalRestTimeRemaining: number;
+  globalTypingProgress: number;
 }
 
 interface TransientState {
-  typingProgress: number;
-  visualMonkeys: VisualMonkey[];
+  typingSpeed: number;
+  maxStamina: number;
+  restTime: number;
+  inspirationChance: number;
+  goldMultiplier: number;
+  monkeyCap: number;
   showCelebration: boolean;
-  lastGoldPerSecond: number;
   completedMissionName: string;
 }
 
 interface Actions {
-  tick: () => void;
-  buyMonkeys: () => void;
+  tick: (delta: number) => void;
+  buyMonkey: () => void;
   dismissCelebration: () => void;
   resetGame: () => void;
 }
 
 export type GameState = PersistedState & TransientState & Actions;
 
-const MONKEY_BASE_COST = 10;
-const MONKEY_GROWTH_RATE = 1.04;
-
-export function getMonkeyCostSingle(index: number): number {
-  return Math.floor(MONKEY_BASE_COST * Math.pow(MONKEY_GROWTH_RATE, index));
-}
-
-export function getPurchaseUnit(count: number): number {
-  if (count < 100) return 1;
-  const digits = Math.floor(Math.log10(count)) + 1;
-  const tier = Math.floor((digits - 1) / 2);
-  return Math.pow(10, tier * 2);
-}
-
-export function getBulkCost(currentCount: number, unitToBuy: number): number {
-  const singleCost = getMonkeyCostSingle(currentCount);
-  if (unitToBuy === 1) return singleCost;
-  // 100마리: 20배, 1000마리: 30배, 10000마리: 40배 (100배가 아닌 10~20배 수준)
-  const multiplier = 10 * Math.log10(unitToBuy);
-  return Math.floor(singleCost * multiplier);
-}
-
-function getBestMatchCount(batchSize: number, L: number, C: number): number {
-  if (batchSize === 1) {
-    let matches = 0;
-    for (let i = 0; i < L; i++) {
-      if (Math.random() < 1 / C) matches++;
-    }
-    return matches;
-  }
-
-  const p = 1 / C;
-  const probs = [];
-  for (let m = 0; m <= L; m++) {
-    let comb = 1;
-    for (let i = 1; i <= m; i++) {
-      comb = (comb * (L - i + 1)) / i;
-    }
-    probs.push(comb * Math.pow(p, m) * Math.pow(1 - p, L - m));
-  }
-
-  const cdf = new Array(L + 1).fill(0);
-  cdf[L] = probs[L];
-  for (let m = L - 1; m >= 0; m--) {
-    cdf[m] = cdf[m + 1] + probs[m];
-  }
-
-  const pMaxGeq = new Array(L + 1).fill(0);
-  for (let m = 0; m <= L; m++) {
-    // Poisson approximation for extreme batch sizes
-    const probLess = Math.exp(-batchSize * cdf[m]);
-    pMaxGeq[m] = 1 - probLess;
-  }
-
-  const r = Math.random();
-  for (let m = L; m >= 0; m--) {
-    if (r <= pMaxGeq[m]) {
-      return m;
-    }
-  }
-  return 0;
-}
-
-function generateStringWithMatches(
-  target: string,
-  max_m: number,
-  charPool: string
-): string {
-  const L = target.length;
-  const matchPositions = new Set<number>();
-
-  // Use Fisher-Yates shuffle approach or simple random sampling for small L
-  while (matchPositions.size < max_m) {
-    matchPositions.add(Math.floor(Math.random() * L));
-  }
-
-  let result = '';
-  for (let i = 0; i < L; i++) {
-    if (matchPositions.has(i)) {
-      result += target[i];
-    } else {
-      let ch = charPool[Math.floor(Math.random() * charPool.length)];
-      while (ch === target[i]) {
-        ch = charPool[Math.floor(Math.random() * charPool.length)];
-      }
-      result += ch;
-    }
-  }
-  return result;
-}
-
 export const useGameStore = create<GameState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
+      // Persisted State
       gold: 0,
-      monkeyCount: 1,
+      monkeys: [
+        {
+          id: 'monkey-initial',
+          currentString: '',
+          isInspired: false,
+          isWaiting: false,
+          spriteType: Math.floor(Math.random() * 3),
+        },
+      ],
+      purchaseCount: 0,
       currentMissionIndex: 0,
-      bestMatchCount: 0,
+      globalStamina: 10,
+      globalIsResting: false,
+      globalRestTimeRemaining: 0,
+      globalTypingProgress: 0,
 
-      typingProgress: 0,
-      visualMonkeys: [],
+      // Transient State
+      typingSpeed: 1.5,
+      maxStamina: 10,
+      restTime: 5.0,
+      inspirationChance: 0.0,
+      goldMultiplier: 1.0,
+      monkeyCap: 20,
       showCelebration: false,
-      lastGoldPerSecond: 0,
       completedMissionName: '',
 
-      tick: () => {
+      tick: (delta: number) => {
         set((state) => {
           if (state.currentMissionIndex >= MISSIONS.length) return state;
 
           const mission = MISSIONS[state.currentMissionIndex];
           const { target, charPool, goldPerMatch, completionBonus } = mission;
           const L = target.length;
-          const C = charPool.length;
 
-          let currentProgress = state.typingProgress;
+          let totalGoldEarned = 0;
+          let foundPerfect = false;
+          let nextShowCelebration = state.showCelebration;
+          let nextCompletedName = state.completedMissionName;
 
-          // If L changed or no monkeys, reset progress
-          if (currentProgress > L || state.visualMonkeys.length === 0) {
-            currentProgress = 0;
+          let newGlobalStamina = state.globalStamina;
+          let newGlobalIsResting = state.globalIsResting;
+          let newGlobalRestTime = state.globalRestTimeRemaining;
+          let newGlobalProgress = state.globalTypingProgress || 0;
+
+          if (newGlobalIsResting) {
+            newGlobalRestTime -= delta;
+            if (newGlobalRestTime <= 0) {
+              newGlobalIsResting = false;
+              newGlobalStamina = state.maxStamina;
+              newGlobalRestTime = 0;
+            }
+            // While resting, monkeys do not type
+            return {
+              globalIsResting: newGlobalIsResting,
+              globalStamina: newGlobalStamina,
+              globalRestTimeRemaining: newGlobalRestTime,
+            };
           }
 
-          if (currentProgress === 0 || currentProgress === L) {
-            // GENERATE NEW CYCLE
-            const numVisual = Math.min(state.monkeyCount, 100);
-            const baseBatch = Math.floor(state.monkeyCount / numVisual);
-            const remainder = state.monkeyCount % numVisual;
+          newGlobalProgress += delta / state.typingSpeed;
 
-            const newVMonkeys: VisualMonkey[] = [];
-            for (let i = 0; i < numVisual; i++) {
-              const batchSize = baseBatch + (i < remainder ? 1 : 0);
-              const max_m = getBestMatchCount(batchSize, L, C);
-              const targetString = generateStringWithMatches(
-                target,
-                max_m,
-                charPool
-              );
+          let updatedMonkeys = [...state.monkeys];
 
-              let batchGold = 0;
-              if (batchSize === 1) {
-                batchGold = max_m * goldPerMatch;
-                if (max_m === L) batchGold += completionBonus;
-              } else {
-                batchGold += max_m * goldPerMatch;
-                if (max_m === L) batchGold += completionBonus;
-                const remaining = batchSize - 1;
-                batchGold += remaining * (L / C) * goldPerMatch;
-                batchGold += remaining * Math.pow(1 / C, L) * completionBonus;
-              }
-
-              newVMonkeys.push({
-                id: `vmonkey-${i}-${Date.now()}`,
-                batchSize,
-                targetString,
-                earnedGold: Math.floor(batchGold),
-                showReward: false,
-              });
+          while (newGlobalProgress >= 1) {
+            let activeMonkeys = updatedMonkeys.filter((m) => !m.isWaiting);
+            if (activeMonkeys.length === 0) {
+              updatedMonkeys = updatedMonkeys.map((m) => ({
+                ...m,
+                isWaiting: false,
+              }));
+              activeMonkeys = updatedMonkeys;
             }
 
-            if (L === 1) {
-              // Complete immediately
-              let cycleGold = 0;
-              let foundPerfect = false;
-              let cycleMaxMatch = 0;
+            if (activeMonkeys.length === 0) break;
 
-              const nextVMonkeys = newVMonkeys.map((vm) => {
-                cycleGold += vm.earnedGold;
-                let matches = 0;
-                if (vm.targetString[0] === target[0]) matches++;
-                if (matches === 1) foundPerfect = true;
-                if (matches > cycleMaxMatch) cycleMaxMatch = matches;
+            const currentLen = activeMonkeys[0].currentString.length;
 
-                return { ...vm, showReward: true };
+            if (currentLen < L) {
+              newGlobalProgress -= 1;
+              newGlobalStamina -= 1;
+
+              updatedMonkeys = updatedMonkeys.map((monkey) => {
+                if (monkey.isWaiting) return monkey;
+
+                let newLastString = monkey.lastString;
+                let newLastEarnedGold = monkey.lastEarnedGold;
+                if (monkey.currentString.length === 0) {
+                  newLastString = undefined;
+                  newLastEarnedGold = undefined;
+                }
+
+                let char = '';
+                if (monkey.isInspired && Math.random() < 0.5) {
+                  char = target[monkey.currentString.length];
+                } else {
+                  char = charPool[Math.floor(Math.random() * charPool.length)];
+                }
+
+                return {
+                  ...monkey,
+                  currentString: monkey.currentString + char,
+                  lastString: newLastString,
+                  lastEarnedGold: newLastEarnedGold,
+                };
               });
 
-              const nextBestMatch = Math.max(
-                state.bestMatchCount,
-                cycleMaxMatch
-              );
-              let nextIndex = state.currentMissionIndex;
-              let nextShowCelebration = false;
-              let completedName = state.completedMissionName;
-
-              if (foundPerfect) {
-                nextIndex = Math.min(
-                  state.currentMissionIndex + 1,
-                  MISSIONS.length - 1
-                );
-                nextShowCelebration = true;
-                completedName = target;
+              if (newGlobalStamina <= 0) {
+                newGlobalIsResting = true;
+                newGlobalRestTime = state.restTime;
+                break;
               }
-
-              return {
-                gold: state.gold + cycleGold,
-                visualMonkeys: nextVMonkeys,
-                typingProgress: 1,
-                bestMatchCount: foundPerfect ? 0 : nextBestMatch,
-                currentMissionIndex: nextIndex,
-                showCelebration: nextShowCelebration,
-                lastGoldPerSecond: cycleGold,
-                completedMissionName: completedName,
-              };
             }
 
-            return {
-              visualMonkeys: newVMonkeys,
-              typingProgress: 1,
-              showCelebration: false,
-            };
-          } else {
-            // ADVANCE CYCLE
-            const nextProgress = currentProgress + 1;
-            if (nextProgress === L) {
-              let cycleGold = 0;
-              let foundPerfect = false;
-              let cycleMaxMatch = 0;
+            const newLen =
+              updatedMonkeys.find((m) => !m.isWaiting)?.currentString.length ||
+              0;
+            if (newLen === L) {
+              updatedMonkeys = updatedMonkeys.map((monkey) => {
+                if (monkey.isWaiting) return monkey;
 
-              const nextVMonkeys = state.visualMonkeys.map((vm) => {
-                cycleGold += vm.earnedGold;
                 let matches = 0;
                 for (let i = 0; i < L; i++) {
-                  if (vm.targetString[i] === target[i]) matches++;
+                  if (monkey.currentString[i] === target[i]) matches++;
                 }
-                if (matches === L) foundPerfect = true;
-                if (matches > cycleMaxMatch) cycleMaxMatch = matches;
 
-                return { ...vm, showReward: true };
+                let reward = 0;
+                if (matches >= 1) {
+                  reward = goldPerMatch * Math.pow(2, matches - 1);
+                  if (matches === L) {
+                    reward = reward * 3 + completionBonus;
+                    foundPerfect = true;
+                  }
+                  totalGoldEarned += reward * state.goldMultiplier;
+                }
+
+                return {
+                  ...monkey,
+                  lastString: monkey.currentString,
+                  lastEarnedGold: reward * state.goldMultiplier,
+                  currentString: '',
+                  isInspired: Math.random() < state.inspirationChance,
+                  isWaiting: false,
+                };
               });
 
-              const nextBestMatch = Math.max(
-                state.bestMatchCount,
-                cycleMaxMatch
-              );
-              let nextIndex = state.currentMissionIndex;
-              let nextShowCelebration = false;
-              let completedName = state.completedMissionName;
+              updatedMonkeys = updatedMonkeys.map((m) => ({
+                ...m,
+                isWaiting: false,
+              }));
 
               if (foundPerfect) {
-                nextIndex = Math.min(
-                  state.currentMissionIndex + 1,
-                  MISSIONS.length - 1
-                );
-                nextShowCelebration = true;
-                completedName = target;
+                break;
               }
-
-              return {
-                gold: state.gold + cycleGold,
-                visualMonkeys: nextVMonkeys,
-                typingProgress: L,
-                bestMatchCount: foundPerfect ? 0 : nextBestMatch,
-                currentMissionIndex: nextIndex,
-                showCelebration: nextShowCelebration,
-                lastGoldPerSecond: cycleGold / L,
-                completedMissionName: completedName,
-              };
-            } else {
-              return { typingProgress: nextProgress };
             }
           }
+
+          let nextIndex = state.currentMissionIndex;
+          if (foundPerfect) {
+            nextIndex = Math.min(
+              state.currentMissionIndex + 1,
+              MISSIONS.length - 1
+            );
+            nextShowCelebration = true;
+            nextCompletedName = target;
+
+            updatedMonkeys.forEach((m) => {
+              m.currentString = '';
+              m.isInspired = Math.random() < state.inspirationChance;
+              m.isWaiting = false;
+            });
+          }
+
+          return {
+            monkeys: updatedMonkeys,
+            gold: state.gold + totalGoldEarned,
+            currentMissionIndex: nextIndex,
+            showCelebration: nextShowCelebration,
+            completedMissionName: nextCompletedName,
+            globalStamina: newGlobalStamina,
+            globalIsResting: newGlobalIsResting,
+            globalRestTimeRemaining: newGlobalRestTime,
+            globalTypingProgress: newGlobalProgress,
+          };
         });
       },
 
-      buyMonkeys: () => {
-        const state = get();
-        const unit = getPurchaseUnit(state.monkeyCount);
-        const cost = getBulkCost(state.monkeyCount, unit);
-        if (state.gold >= cost) {
-          set({
-            gold: state.gold - cost,
-            monkeyCount: state.monkeyCount + unit,
-          });
-        }
+      buyMonkey: () => {
+        set((state) => {
+          if (state.monkeys.length >= state.monkeyCap) return state;
+
+          const cost = Math.floor(100 * Math.pow(1.07, state.purchaseCount));
+          if (state.gold >= cost) {
+            const activeMonkeys = state.monkeys.filter((m) => !m.isWaiting);
+            const isMidCycle =
+              activeMonkeys.length > 0 &&
+              activeMonkeys[0].currentString.length > 0;
+
+            const newMonkey: Monkey = {
+              id: `monkey-${Date.now()}-${Math.random()}`,
+              currentString: '',
+              isInspired: Math.random() < state.inspirationChance,
+              isWaiting: isMidCycle,
+              spriteType: Math.floor(Math.random() * 3),
+            };
+            return {
+              gold: state.gold - cost,
+              purchaseCount: state.purchaseCount + 1,
+              monkeys: [...state.monkeys, newMonkey],
+            };
+          }
+          return state;
+        });
       },
 
       dismissCelebration: () => set({ showCelebration: false }),
@@ -314,23 +268,36 @@ export const useGameStore = create<GameState>()(
       resetGame: () =>
         set({
           gold: 0,
-          monkeyCount: 1,
+          monkeys: [
+            {
+              id: 'monkey-initial',
+              currentString: '',
+              isInspired: false,
+              isWaiting: false,
+              spriteType: Math.floor(Math.random() * 3),
+            },
+          ],
+          purchaseCount: 0,
           currentMissionIndex: 0,
-          bestMatchCount: 0,
-          typingProgress: 0,
-          visualMonkeys: [],
           showCelebration: false,
-          lastGoldPerSecond: 0,
           completedMissionName: '',
+          globalStamina: 10,
+          globalIsResting: false,
+          globalRestTimeRemaining: 0,
+          globalTypingProgress: 0,
         }),
     }),
     {
       name: 'monkey-game-storage',
       partialize: (state) => ({
         gold: state.gold,
-        monkeyCount: state.monkeyCount,
+        monkeys: state.monkeys,
+        purchaseCount: state.purchaseCount,
         currentMissionIndex: state.currentMissionIndex,
-        bestMatchCount: state.bestMatchCount,
+        globalStamina: state.globalStamina,
+        globalIsResting: state.globalIsResting,
+        globalRestTimeRemaining: state.globalRestTimeRemaining,
+        globalTypingProgress: state.globalTypingProgress,
       }),
     }
   )
