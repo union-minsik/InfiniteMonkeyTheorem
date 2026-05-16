@@ -1,4 +1,18 @@
-# CLAUDE.md — Infinite Monkey Theorem
+# CLAUDE.md — Infinite Monkey Theorem (Game Studio Agent Architecture)
+
+## 협업 프로토콜 (Game Studios)
+
+**자율 실행이 아닌 사용자 주도 협업.**
+모든 작업은 **질문 → 옵션 제시 → 결정 → 초안 → 승인** 순서로 진행.
+
+- 파일을 쓰기 전 반드시 "이 파일을 수정해도 될까요?" 라고 물어볼 것
+- 변경 전 초안/요약을 먼저 보여줄 것
+- 여러 파일 변경 시 전체 변경 목록을 명시적으로 승인받을 것
+- 사용자 지시 없이 커밋하지 말 것
+
+@.claude/docs/coordination-rules.md
+
+---
 
 ## 프로젝트 개요
 
